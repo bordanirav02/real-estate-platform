@@ -5,7 +5,7 @@ const { protect, authorize, optionalAuth } = require('../middleware/auth');
 
 // @route   GET /api/properties
 // @desc    Get all properties with filters
-// @access  Public
+// @access  Public (only shows approved) / Private for admin (shows all)
 router.get('/', optionalAuth, async (req, res) => {
   try {
     const {
@@ -21,13 +21,20 @@ router.get('/', optionalAuth, async (req, res) => {
       status,
       isFeatured,
       search,
+      showAll, // NEW: admin can see all properties
       page = 1,
       limit = 12,
       sort = '-createdAt'
     } = req.query;
 
     // Build filter object
-    const filter = { isApproved: true };
+    const filter = {};
+    
+    // Only show approved properties for public users
+    // Admin can see all if showAll=true
+    if (showAll !== 'true' || !req.user || req.user.role !== 'admin') {
+      filter.isApproved = true;
+    }
 
     if (city) filter['location.city'] = new RegExp(city, 'i');
     if (state) filter['location.state'] = new RegExp(state, 'i');
@@ -135,6 +142,9 @@ router.post('/', protect, authorize('agent', 'admin'), async (req, res) => {
     // If admin creates property, it's auto-approved
     if (req.user.role === 'admin') {
       propertyData.isApproved = true;
+    } else {
+      // Agent properties need approval
+      propertyData.isApproved = false;
     }
 
     const property = await Property.create(propertyData);
@@ -268,14 +278,21 @@ router.put('/:id/approve', protect, authorize('admin'), async (req, res) => {
 });
 
 // @route   GET /api/properties/agent/:agentId
-// @desc    Get all properties by specific agent
+// @desc    Get all properties by specific agent (FIXED - shows all for agent)
 // @access  Public
-router.get('/agent/:agentId', async (req, res) => {
+router.get('/agent/:agentId', optionalAuth, async (req, res) => {
   try {
-    const properties = await Property.find({
-      agent: req.params.agentId,
-      isApproved: true
-    }).populate('agent', 'name email phone avatar agentDetails');
+    const filter = { agent: req.params.agentId };
+    
+    // If the requesting user is the agent themselves or admin, show all properties
+    // Otherwise only show approved
+    if (!req.user || (req.user.id !== req.params.agentId && req.user.role !== 'admin')) {
+      filter.isApproved = true;
+    }
+
+    const properties = await Property.find(filter)
+      .populate('agent', 'name email phone avatar agentDetails')
+      .sort('-createdAt');
 
     res.status(200).json({
       success: true,

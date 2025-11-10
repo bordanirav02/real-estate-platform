@@ -4,6 +4,8 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
 const socketIO = require('socket.io');
+const chatRoutes = require('./routes/chatRoutes');
+
 
 // Load environment variables
 dotenv.config();
@@ -24,6 +26,7 @@ const io = socketIO(server, {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api/chat', chatRoutes);
 
 // MongoDB Connection
 const connectDB = async () => {
@@ -103,6 +106,8 @@ app.use((err, req, res, next) => {
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
+
+app.use('/api/chat', chatRoutes);
 
 // 404 handler
 app.use((req, res) => {
